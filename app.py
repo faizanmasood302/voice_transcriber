@@ -101,32 +101,63 @@ if uploaded_file is not None:
         try:
             kwargs = {} if language == "auto" else {"language": language}
             
-            # Optimized approach - try direct first, then librosa if needed
+            # Show file info for debugging
+            st.info(f"📁 File: {uploaded_file.name} ({len(uploaded_file.getvalue())} bytes)")
+            st.info(f"🌍 Language: {language}")
+            
+            # Try multiple approaches
+            transcription = None
+            
+            # Approach 1: Direct with original file
             try:
-                # Direct approach (fastest)
+                st.info("🔄 Trying direct approach...")
                 transcription = transcriber(tmp_file.name, generate_kwargs=kwargs)["text"]
+                st.success("✅ Direct approach succeeded!")
             except Exception as direct_error:
-                # Only use librosa if direct approach fails
+                st.warning(f"⚠️ Direct failed: {str(direct_error)}")
+                
+                # Approach 2: Librosa processing
                 if LIBROSA_AVAILABLE:
-                    st.info("🔄 Direct approach failed, using librosa...")
-                    audio_data, sr = librosa.load(tmp_file.name, sr=16000)
-                    # Save as WAV for Whisper
-                    wav_file = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
-                    write(wav_file.name, 16000, (audio_data * 32767).astype(np.int16))
-                    transcription = transcriber(wav_file.name, generate_kwargs=kwargs)["text"]
+                    try:
+                        st.info("🔄 Trying librosa approach...")
+                        audio_data, sr = librosa.load(tmp_file.name, sr=16000)
+                        st.info(f"📊 Audio: {len(audio_data)} samples at {sr}Hz")
+                        
+                        # Save as WAV for Whisper
+                        wav_file = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+                        write(wav_file.name, 16000, (audio_data * 32767).astype(np.int16))
+                        transcription = transcriber(wav_file.name, generate_kwargs=kwargs)["text"]
+                        st.success("✅ Librosa approach succeeded!")
+                    except Exception as librosa_error:
+                        st.warning(f"⚠️ Librosa failed: {str(librosa_error)}")
+                        
+                        # Approach 3: Try with different Whisper settings
+                        try:
+                            st.info("🔄 Trying with different settings...")
+                            # Try without language specification
+                            transcription = transcriber(tmp_file.name)["text"]
+                            st.success("✅ Alternative approach succeeded!")
+                        except Exception as alt_error:
+                            st.error(f"❌ All approaches failed: {str(alt_error)}")
+                            raise alt_error
                 else:
                     raise direct_error
             
-            st.markdown("#### 📝 Transcription")
-            st.text_area("Transcription:", value=transcription, height=200)
+            if transcription:
+                st.markdown("#### 📝 Transcription")
+                st.text_area("Transcription:", value=transcription, height=200)
+            else:
+                st.error("❌ No transcription result")
             
         except Exception as e:
-            st.error(f"Transcription failed: {str(e)}")
+            st.error(f"❌ Transcription failed: {str(e)}")
+            st.error(f"Error type: {type(e).__name__}")
             st.info("💡 **Troubleshooting tips:**")
             st.info("• Try uploading a WAV file (best compatibility)")
             st.info("• Make sure the audio file is not corrupted")
             st.info("• Check that the file contains speech audio")
             st.info("• For MP3/M4A files, try converting to WAV first")
+            st.info("• Try a different audio file")
 
 st.markdown("---")
 st.markdown("<p style='text-align:center;'>Made with ❤️ ung Streamlit & OpenAI Whisper</p>", unsafe_allow_html=True)
