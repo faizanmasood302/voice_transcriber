@@ -29,14 +29,30 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# Initialize Whisper ASR
-transcriber = pipeline("automatic-speech-recognition", model="openai/whisper-small")
+# Initialize Whisper ASR with error handling
+@st.cache_resource
+def load_transcriber():
+    try:
+        st.info("🔄 Loading Whisper model...")
+        transcriber = pipeline("automatic-speech-recognition", model="openai/whisper-small")
+        st.success("✅ Whisper model loaded successfully!")
+        return transcriber
+    except Exception as e:
+        st.error(f"❌ Failed to load Whisper model: {str(e)}")
+        return None
+
+transcriber = load_transcriber()
 
 st.markdown("<h1 style='text-align:center;'>🎤 Voice Recorder & Transcriber</h1>", unsafe_allow_html=True)
 st.markdown("<p style='text-align:center;'>Record your voice and get instant transcription using OpenAI Whisper!</p>", unsafe_allow_html=True)
 st.markdown("---")
 
 language = st.selectbox("Select transcription language", ["auto", "en", "ur", "hi", "fr", "es"])
+
+# Check if transcriber is loaded
+if transcriber is None:
+    st.error("❌ Whisper model failed to load. Please refresh the page and try again.")
+    st.stop()
 
 # Check if we're running locally or on cloud
 if SOUNDDEVICE_AVAILABLE:
@@ -99,64 +115,46 @@ if uploaded_file is not None:
         st.markdown("#### ⏳ Transcribing...")
         
         try:
+            # Simple approach - try direct first
             kwargs = {} if language == "auto" else {"language": language}
             
-            # Show file info for debugging
-            st.info(f"📁 File: {uploaded_file.name} ({len(uploaded_file.getvalue())} bytes)")
+            st.info(f"📁 Processing: {uploaded_file.name}")
             st.info(f"🌍 Language: {language}")
             
-            # Try multiple approaches
-            transcription = None
-            
-            # Approach 1: Direct with original file
+            # Try direct transcription first
             try:
-                st.info("🔄 Trying direct approach...")
                 transcription = transcriber(tmp_file.name, generate_kwargs=kwargs)["text"]
-                st.success("✅ Direct approach succeeded!")
-            except Exception as direct_error:
-                st.warning(f"⚠️ Direct failed: {str(direct_error)}")
+                st.success("✅ Transcription completed!")
+            except Exception as e:
+                st.warning(f"⚠️ Direct approach failed: {str(e)}")
                 
-                # Approach 2: Librosa processing
+                # Try with librosa if available
                 if LIBROSA_AVAILABLE:
                     try:
-                        st.info("🔄 Trying librosa approach...")
+                        st.info("🔄 Trying with librosa...")
                         audio_data, sr = librosa.load(tmp_file.name, sr=16000)
-                        st.info(f"📊 Audio: {len(audio_data)} samples at {sr}Hz")
-                        
-                        # Save as WAV for Whisper
                         wav_file = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
                         write(wav_file.name, 16000, (audio_data * 32767).astype(np.int16))
                         transcription = transcriber(wav_file.name, generate_kwargs=kwargs)["text"]
-                        st.success("✅ Librosa approach succeeded!")
+                        st.success("✅ Transcription completed with librosa!")
                     except Exception as librosa_error:
-                        st.warning(f"⚠️ Librosa failed: {str(librosa_error)}")
-                        
-                        # Approach 3: Try with different Whisper settings
-                        try:
-                            st.info("🔄 Trying with different settings...")
-                            # Try without language specification
-                            transcription = transcriber(tmp_file.name)["text"]
-                            st.success("✅ Alternative approach succeeded!")
-                        except Exception as alt_error:
-                            st.error(f"❌ All approaches failed: {str(alt_error)}")
-                            raise alt_error
+                        st.error(f"❌ Librosa also failed: {str(librosa_error)}")
+                        raise librosa_error
                 else:
-                    raise direct_error
+                    raise e
             
-            if transcription:
+            # Display result
+            if transcription and transcription.strip():
                 st.markdown("#### 📝 Transcription")
                 st.text_area("Transcription:", value=transcription, height=200)
             else:
-                st.error("❌ No transcription result")
+                st.warning("⚠️ No speech detected in the audio file")
             
         except Exception as e:
             st.error(f"❌ Transcription failed: {str(e)}")
-            st.error(f"Error type: {type(e).__name__}")
-            st.info("💡 **Troubleshooting tips:**")
-            st.info("• Try uploading a WAV file (best compatibility)")
-            st.info("• Make sure the audio file is not corrupted")
-            st.info("• Check that the file contains speech audio")
-            st.info("• For MP3/M4A files, try converting to WAV first")
+            st.info("💡 **Try:**")
+            st.info("• Upload a WAV file")
+            st.info("• Make sure the file contains clear speech")
             st.info("• Try a different audio file")
 
 st.markdown("---")
