@@ -102,10 +102,20 @@ uploaded_file = st.file_uploader(
 if uploaded_file is not None:
     st.success("✅ Audio file uploaded!")
     
-    # Save uploaded file to temporary location
-    tmp_file = tempfile.NamedTemporaryFile(suffix=f".{uploaded_file.name.split('.')[-1]}", delete=False)
+    # Get file extension and ensure it's valid
+    file_extension = uploaded_file.name.split('.')[-1].lower()
+    valid_extensions = ['wav', 'mp3', 'm4a', 'flac', 'ogg', 'aac']
+    
+    if file_extension not in valid_extensions:
+        st.warning(f"⚠️ File extension '.{file_extension}' might not be supported. Converting to WAV...")
+        file_extension = 'wav'
+    
+    # Save uploaded file to temporary location with proper extension
+    tmp_file = tempfile.NamedTemporaryFile(suffix=f".{file_extension}", delete=False)
     tmp_file.write(uploaded_file.getvalue())
     tmp_file.close()
+    
+    st.info(f"📁 Saved as: {tmp_file.name}")
     
     # Play the uploaded audio
     st.audio(tmp_file.name)
@@ -121,26 +131,41 @@ if uploaded_file is not None:
             st.info(f"📁 Processing: {uploaded_file.name}")
             st.info(f"🌍 Language: {language}")
             
-            # Try direct transcription first
-            try:
-                transcription = transcriber(tmp_file.name, generate_kwargs=kwargs)["text"]
-                st.success("✅ Transcription completed!")
-            except Exception as e:
-                st.warning(f"⚠️ Direct approach failed: {str(e)}")
-                
-                # Try with librosa if available
-                if LIBROSA_AVAILABLE:
+            # Always use librosa for better format support
+            if LIBROSA_AVAILABLE:
+                try:
+                    st.info("🔄 Processing with librosa...")
+                    audio_data, sr = librosa.load(tmp_file.name, sr=16000)
+                    st.info(f"📊 Audio loaded: {len(audio_data)} samples at {sr}Hz")
+                    
+                    # Save as WAV for Whisper
+                    wav_file = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+                    write(wav_file.name, 16000, (audio_data * 32767).astype(np.int16))
+                    st.info(f"💾 Converted to WAV: {wav_file.name}")
+                    
+                    # Transcribe
+                    transcription = transcriber(wav_file.name, generate_kwargs=kwargs)["text"]
+                    st.success("✅ Transcription completed!")
+                    
+                except Exception as librosa_error:
+                    st.warning(f"⚠️ Librosa failed: {str(librosa_error)}")
+                    
+                    # Fallback to direct approach
                     try:
-                        st.info("🔄 Trying with librosa...")
-                        audio_data, sr = librosa.load(tmp_file.name, sr=16000)
-                        wav_file = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
-                        write(wav_file.name, 16000, (audio_data * 32767).astype(np.int16))
-                        transcription = transcriber(wav_file.name, generate_kwargs=kwargs)["text"]
-                        st.success("✅ Transcription completed with librosa!")
-                    except Exception as librosa_error:
-                        st.error(f"❌ Librosa also failed: {str(librosa_error)}")
-                        raise librosa_error
-                else:
+                        st.info("🔄 Trying direct approach...")
+                        transcription = transcriber(tmp_file.name, generate_kwargs=kwargs)["text"]
+                        st.success("✅ Direct transcription completed!")
+                    except Exception as direct_error:
+                        st.error(f"❌ Both approaches failed: {str(direct_error)}")
+                        raise direct_error
+            else:
+                # Direct approach only
+                try:
+                    st.info("🔄 Using direct approach...")
+                    transcription = transcriber(tmp_file.name, generate_kwargs=kwargs)["text"]
+                    st.success("✅ Transcription completed!")
+                except Exception as e:
+                    st.error(f"❌ Direct approach failed: {str(e)}")
                     raise e
             
             # Display result
