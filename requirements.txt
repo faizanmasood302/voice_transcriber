@@ -1,8 +1,9 @@
 streamlit==1.37.1
-transformers==4.44.2
+transformers>=4.45.0
 torch==2.8.0
 soundfile==0.12.1
 streamlit-webrtc==0.47.7
 ffmpeg-python
 numpy
 scipy
+sounddevice
