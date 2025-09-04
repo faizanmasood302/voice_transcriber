@@ -6,4 +6,3 @@ streamlit-webrtc==0.47.7
 ffmpeg-python
 numpy
 scipy
-tokenizers>=0.20.0
