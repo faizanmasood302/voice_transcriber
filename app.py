@@ -97,24 +97,25 @@ if uploaded_file is not None:
     # Transcribe button
     if st.button("🎯 Transcribe Audio"):
         st.markdown("#### ⏳ Transcribing...")
+        
         try:
             kwargs = {} if language == "auto" else {"language": language}
             
-            # Try different approaches for audio processing
-            if LIBROSA_AVAILABLE:
-                # Use librosa for better audio handling
-                try:
+            # Optimized approach - try direct first, then librosa if needed
+            try:
+                # Direct approach (fastest)
+                transcription = transcriber(tmp_file.name, generate_kwargs=kwargs)["text"]
+            except Exception as direct_error:
+                # Only use librosa if direct approach fails
+                if LIBROSA_AVAILABLE:
+                    st.info("🔄 Direct approach failed, using librosa...")
                     audio_data, sr = librosa.load(tmp_file.name, sr=16000)
                     # Save as WAV for Whisper
                     wav_file = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
                     write(wav_file.name, 16000, (audio_data * 32767).astype(np.int16))
                     transcription = transcriber(wav_file.name, generate_kwargs=kwargs)["text"]
-                except Exception as librosa_error:
-                    st.warning(f"Librosa processing failed: {librosa_error}. Trying direct approach...")
-                    transcription = transcriber(tmp_file.name, generate_kwargs=kwargs)["text"]
-            else:
-                # Direct approach
-                transcription = transcriber(tmp_file.name, generate_kwargs=kwargs)["text"]
+                else:
+                    raise direct_error
             
             st.markdown("#### 📝 Transcription")
             st.text_area("Transcription:", value=transcription, height=200)
@@ -128,4 +129,4 @@ if uploaded_file is not None:
             st.info("• For MP3/M4A files, try converting to WAV first")
 
 st.markdown("---")
-st.markdown("<p style='text-align:center;'>Made with ❤️ using Streamlit & OpenAI Whisper</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align:center;'>Made with ❤️ ung Streamlit & OpenAI Whisper</p>", unsafe_allow_html=True)
