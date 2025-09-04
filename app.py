@@ -9,7 +9,7 @@ import os
 try:
     import sounddevice as sd
     SOUNDDEVICE_AVAILABLE = True
-except ImportError:
+except (ImportError, OSError):
     SOUNDDEVICE_AVAILABLE = False
 
 # --- Custom Styles ---
