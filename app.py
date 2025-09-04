@@ -4,6 +4,7 @@ import tempfile
 from scipy.io.wavfile import write
 from transformers import pipeline
 import os
+import io
 
 # Try to import sounddevice, fallback if not available
 try:
@@ -11,6 +12,13 @@ try:
     SOUNDDEVICE_AVAILABLE = True
 except (ImportError, OSError):
     SOUNDDEVICE_AVAILABLE = False
+
+# Try to import librosa for better audio handling
+try:
+    import librosa
+    LIBROSA_AVAILABLE = True
+except ImportError:
+    LIBROSA_AVAILABLE = False
 
 # --- Custom Styles ---
 st.markdown("""
@@ -91,12 +99,33 @@ if uploaded_file is not None:
         st.markdown("#### ⏳ Transcribing...")
         try:
             kwargs = {} if language == "auto" else {"language": language}
-            transcription = transcriber(tmp_file.name, generate_kwargs=kwargs)["text"]
+            
+            # Try different approaches for audio processing
+            if LIBROSA_AVAILABLE:
+                # Use librosa for better audio handling
+                try:
+                    audio_data, sr = librosa.load(tmp_file.name, sr=16000)
+                    # Save as WAV for Whisper
+                    wav_file = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+                    write(wav_file.name, 16000, (audio_data * 32767).astype(np.int16))
+                    transcription = transcriber(wav_file.name, generate_kwargs=kwargs)["text"]
+                except Exception as librosa_error:
+                    st.warning(f"Librosa processing failed: {librosa_error}. Trying direct approach...")
+                    transcription = transcriber(tmp_file.name, generate_kwargs=kwargs)["text"]
+            else:
+                # Direct approach
+                transcription = transcriber(tmp_file.name, generate_kwargs=kwargs)["text"]
+            
             st.markdown("#### 📝 Transcription")
             st.text_area("Transcription:", value=transcription, height=200)
+            
         except Exception as e:
             st.error(f"Transcription failed: {str(e)}")
-            st.info("Try uploading a different audio file or check the file format.")
+            st.info("💡 **Troubleshooting tips:**")
+            st.info("• Try uploading a WAV file (best compatibility)")
+            st.info("• Make sure the audio file is not corrupted")
+            st.info("• Check that the file contains speech audio")
+            st.info("• For MP3/M4A files, try converting to WAV first")
 
 st.markdown("---")
 st.markdown("<p style='text-align:center;'>Made with ❤️ using Streamlit & OpenAI Whisper</p>", unsafe_allow_html=True)
